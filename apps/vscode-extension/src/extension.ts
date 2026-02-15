@@ -518,17 +518,10 @@ function setupRepositoryListeners(repo: any) {
         isAutoCapturing = true;
         
         try {
-          // Show notification
-          const action = await vscode.window.showInformationMessage(
-            'Git commit detected. Auto-capturing snapshot...',
-            'Capture Now',
-            'Skip'
+          // Show notification (no buttons - auto-capture)
+          vscode.window.showInformationMessage(
+            'Git commit detected. Auto-capturing snapshot...'
           );
-
-          if (action === 'Skip') {
-            isAutoCapturing = false;
-            return;
-          }
 
           statusBarManager?.updateStatus('evaluating');
           await vscode.commands.executeCommand('visionx.evaluateNow');
