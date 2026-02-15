@@ -30,7 +30,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Validate authentication token for VS Code extension' })
   @ApiResponse({ status: 200, description: 'Token validated successfully' })
   @ApiResponse({ status: 401, description: 'Invalid token' })
-  async validateToken(@Body() body: { token: string }): Promise<{ valid: boolean; teamId?: string; projectId?: string; isLocked?: boolean }> {
+  async validateToken(@Body() body: { token: string }): Promise<{ valid: boolean; teamName?: string; teamId?: string; projectId?: string; isLocked?: boolean }> {
     return this.authService.validateToken(body.token);
   }
 
@@ -38,7 +38,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate a custom token for development/testing' })
   @ApiResponse({ status: 200, description: 'Custom token generated successfully' })
-  async generateCustomToken(@Body() body: { teamName: string; teamId?: string; projectId?: string }): Promise<{ token: string; teamName: string; teamId: string; projectId: string }> {
+  async generateCustomToken(@Body() body: { teamName: string; teamId?: string; projectId?: string }): Promise<{ token: string; tokenName: string; teamName: string; teamId: string; projectId: string }> {
     return this.authService.generateCustomToken(body.teamName, body.teamId, body.projectId);
   }
 }

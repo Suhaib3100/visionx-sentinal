@@ -4,6 +4,7 @@ import axios from 'axios';
 
 export interface AuthState {
   token: string;
+  teamName: string;
   teamId: string;
   projectId: string;
   isLocked: boolean;
@@ -35,6 +36,7 @@ export class AuthManager {
       if (response.data.valid) {
         this.authState = {
           token,
+          teamName: response.data.teamName || 'Unknown Team',
           teamId: response.data.teamId,
           projectId: response.data.projectId,
           isLocked: response.data.isLocked || false,
@@ -57,6 +59,10 @@ export class AuthManager {
 
   getToken(): string | null {
     return this.authState?.token || null;
+  }
+
+  getTeamName(): string | null {
+    return this.authState?.teamName || null;
   }
 
   getTeamId(): string | null {

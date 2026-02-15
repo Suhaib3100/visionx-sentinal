@@ -74,19 +74,32 @@ export class AuthService {
     return this.users.find(u => u.id === userId) || null;
   }
 
-  async validateToken(token: string): Promise<{ valid: boolean; teamId?: string; projectId?: string; isLocked?: boolean }> {
+  async validateToken(token: string): Promise<{ valid: boolean; teamName?: string; teamId?: string; projectId?: string; isLocked?: boolean }> {
     try {
       const decoded = this.jwtService.verify(token);
+      
+      // If token has teamId and projectId, it's a custom token - validate directly
+      if (decoded.teamId && decoded.projectId) {
+        return {
+          valid: true,
+          teamName: decoded.teamName || 'Unknown Team',
+          teamId: decoded.teamId,
+          projectId: decoded.projectId,
+          isLocked: false,
+        };
+      }
+      
+      // Otherwise, it's a regular user token - validate user exists
       const user = await this.validateUser(decoded.sub);
       
       if (!user) {
         return { valid: false };
       }
 
-      // In a real implementation, fetch team and project from database
-      // For now, return mock data
+      // Return with default team/project values
       return {
         valid: true,
+        teamName: 'Default Team',
         teamId: decoded.teamId || 'team-123',
         projectId: decoded.projectId || 'project-456',
         isLocked: false,
@@ -96,9 +109,12 @@ export class AuthService {
     }
   }
 
-  async generateCustomToken(teamName: string, teamId?: string, projectId?: string): Promise<{ token: string; teamName: string; teamId: string; projectId: string }> {
+  async generateCustomToken(teamName: string, teamId?: string, projectId?: string): Promise<{ token: string; tokenName: string; teamName: string; teamId: string; projectId: string }> {
     const customTeamId = teamId || `team-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
     const customProjectId = projectId || `project-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
+    
+    // Generate token name: TEAMNAME-TOKEN
+    const tokenName = `${teamName.toUpperCase().replace(/\s+/g, '-')}-TOKEN`;
 
     const payload = {
       sub: 'dev-user',
@@ -107,12 +123,14 @@ export class AuthService {
       teamId: customTeamId,
       teamName: teamName,
       projectId: customProjectId,
+      tokenName: tokenName,
     };
 
     const token = this.jwtService.sign(payload, { expiresIn: '30d' });
 
     return {
       token,
+      tokenName,
       teamName,
       teamId: customTeamId,
       projectId: customProjectId,

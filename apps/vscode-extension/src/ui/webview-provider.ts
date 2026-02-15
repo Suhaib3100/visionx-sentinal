@@ -77,7 +77,7 @@ export class VisionXWebviewProvider implements vscode.WebviewViewProvider {
     this._view?.webview.postMessage({
       type: 'updateStatus',
       authenticated: isAuthenticated,
-      teamName: authState?.teamId ? `Team-${authState.teamId.split('-').pop()}` : 'Not set',
+      teamName: authState?.teamName || 'Not set',
       teamId: authState?.teamId || 'Not set',
       projectId: authState?.projectId || 'Not set'
     });
