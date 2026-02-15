@@ -3,6 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { Snapshot, SnapshotStatus } from '../../entities/snapshot.entity';
+import { StaticMetrics } from '../../entities/static-metrics.entity';
+import { AIReport } from '../../entities/ai-report.entity';
+import { FinalScore } from '../../entities/final-score.entity';
 import { EvaluationJob } from '../sqs/sqs-consumer.service';
 import { LintAnalyzerService } from './analyzers/lint-analyzer.service';
 import { ComplexityAnalyzerService } from './analyzers/complexity-analyzer.service';
@@ -10,6 +14,7 @@ import { SecurityScannerService } from './analyzers/security-scanner.service';
 import { TestCoverageAnalyzerService } from './analyzers/test-coverage-analyzer.service';
 import { LLMClientService } from '../ai/services/llm-client.service';
 import { PromptBuilderService, CodeEvaluationContext } from '../ai/services/prompt-builder.service';
+import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import * as tar from 'tar';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -27,12 +32,14 @@ export class EvaluationOrchestratorService {
   private s3Bucket: string;
 
   constructor(
-    // @InjectRepository(Snapshot)
-    // private snapshotRepository: Repository<Snapshot>,
-    // @InjectRepository(StaticMetrics)
-    // private metricsRepository: Repository<StaticMetrics>,
-    // @InjectRepository(AIReport)
-    // private aiReportRepository: Repository<AIReport>,
+    @InjectRepository(Snapshot)
+    private snapshotRepository: Repository<Snapshot>,
+    @InjectRepository(StaticMetrics)
+    private metricsRepository: Repository<StaticMetrics>,
+    @InjectRepository(AIReport)
+    private aiReportRepository: Repository<AIReport>,
+    @InjectRepository(FinalScore)
+    private finalScoreRepository: Repository<FinalScore>,
     private readonly configService: ConfigService,
     private readonly lintAnalyzer: LintAnalyzerService,
     private readonly complexityAnalyzer: ComplexityAnalyzerService,
@@ -40,6 +47,7 @@ export class EvaluationOrchestratorService {
     private readonly testCoverageAnalyzer: TestCoverageAnalyzerService,
     private readonly llmClient: LLMClientService,
     private readonly promptBuilder: PromptBuilderService,
+    private readonly leaderboardService: LeaderboardService,
   ) {
     const awsConfig = this.configService.get('aws');
     this.s3Client = new S3Client({
@@ -59,21 +67,20 @@ export class EvaluationOrchestratorService {
     
     try {
       // Step 1: Retrieve snapshot metadata from database
-      // const snapshot = await this.snapshotRepository.findOne({
-      //   where: { id: job.snapshotId },
-      //   relations: ['project', 'team'],
-      // });
+      const snapshot = await this.snapshotRepository.findOne({
+        where: { id: job.snapshotId },
+        relations: ['project', 'team'],
+      });
       
-      // if (!snapshot) {
-      //   throw new Error(`Snapshot not found: ${job.snapshotId}`);
-      // }
+      if (!snapshot) {
+        throw new Error(`Snapshot not found: ${job.snapshotId}`);
+      }
       
-      // Mock snapshot data for now
-      const snapshot = {
-        id: job.snapshotId,
-        project: { name: 'Test Project', description: 'A test hackathon project' },
-        team: { name: 'Test Team' },
-      };
+      // Update snapshot status to processing
+      await this.snapshotRepository.update(
+        { id: snapshot.id },
+        { status: SnapshotStatus.PROCESSING }
+      );
       
       // Step 2: Download files from S3
       workDir = await this.downloadSnapshot(job.s3Path);
@@ -107,19 +114,33 @@ export class EvaluationOrchestratorService {
       });
       
       // Step 7: Store static metrics in database
-      // await this.metricsRepository.save({
-      //   snapshot,
-      //   lintScore,
-      //   complexityScore,
-      //   securityScore,
-      //   testScore,
-      //   staticScore,
-      // });
+      const staticMetrics = this.metricsRepository.create({
+        snapshotId: snapshot.id,
+        lintScore,
+        lintIssues: [], // TODO: populate from analyzer
+        complexityScore,
+        complexityMetrics: {
+          cyclomaticComplexity: 0,
+          cognitiveComplexity: 0,
+          maintainabilityIndex: 0,
+          linesOfCode: files.reduce((sum, f) => sum + f.content.split('\n').length, 0),
+          logicalLinesOfCode: 0,
+          commentPercentage: 0,
+        },
+        securityScore,
+        securityIssues: [], // TODO: populate from scanner
+        testCoverage: undefined,
+        codeQualityScore: staticScore,
+        totalScore: staticScore,
+      });
+      
+      await this.metricsRepository.save(staticMetrics);
+      this.logger.log(`Static metrics saved: ID ${staticMetrics.id}`);
       
       // Step 8: Run AI evaluation
       this.logger.log('Running AI evaluation with Bedrock...');
       const context: CodeEvaluationContext = {
-        projectName: snapshot.project.name,
+        projectName: snapshot.project.title,
         teamName: snapshot.team.name,
         description: snapshot.project.description,
         files,
@@ -151,38 +172,100 @@ export class EvaluationOrchestratorService {
       const aiScore = this.calculateAIScore(aiResponse);
       
       // Step 10: Store AI report in database
-      // await this.aiReportRepository.save({
-      //   snapshot,
-      //   innovationScore: aiResponse.innovation_score,
-      //   architectureScore: aiResponse.architecture_score,
-      //   scalabilityScore: aiResponse.scalability_score,
-      //   alignmentScore: aiResponse.alignment_score,
-      //   readabilityScore: aiResponse.readability_score,
-      //   documentationScore: aiResponse.documentation_score,
-      //   feedback: aiResponse.feedback,
-      //   riskFlags: aiResponse.risk_flags,
-      //   aiScore,
-      // });
+      const aiReport = await this.aiReportRepository.save({
+        snapshotId: snapshot.id,
+        innovationScore: aiResponse.innovation_score,
+        creativityScore: aiResponse.innovation_score, // Map innovation to creativity
+        codeQualityScore: aiResponse.readability_score,
+        architectureScore: aiResponse.architecture_score,
+        documentationScore: aiResponse.documentation_score,
+        overallScore: aiScore,
+        feedback: [
+          {
+            category: 'overall',
+            score: aiScore,
+            positives: [aiResponse.feedback],
+            negatives: aiResponse.risk_flags,
+            suggestions: [],
+          },
+        ],
+        summary: aiResponse.feedback,
+        model: this.configService.get('aws.bedrock.modelId', 'claude-3-haiku'),
+        tokensUsed: 0, // TODO: track token usage
+      });
+      
+      this.logger.log(`AI report saved: ID ${aiReport.id}`);
       
       // Step 11: Calculate final score (60% static, 40% AI)
       const finalScore = staticScore * 0.6 + aiScore * 0.4;
+      
+      // Step 12: Save final score
+      const finalScoreRecord = await this.finalScoreRepository.save({
+        teamId: snapshot.teamId,
+        snapshotId: snapshot.id,
+        staticScore,
+        aiScore,
+        totalScore: finalScore,
+        rank: 0, // Will be updated by leaderboard service
+        weight: { static: 0.6, ai: 0.4 },
+        breakdown: {
+          lint: lintScore,
+          complexity: complexityScore,
+          security: securityScore,
+          testCoverage: testScore,
+          innovation: aiResponse.innovation_score,
+          creativity: aiResponse.innovation_score,
+          architecture: aiResponse.architecture_score,
+          documentation: aiResponse.documentation_score,
+        },
+      });
+      
+      this.logger.log(`Final score saved: ID ${finalScoreRecord.id}`);
+      
+      // Step 13: Update leaderboard in Redis
+      const newRank = await this.leaderboardService.updateTeamScore(
+        snapshot.teamId,
+        finalScore,
+        snapshot.snapshotNumber
+      );
+      
+      this.logger.log(`Leaderboard updated: Team ${snapshot.team.name} now rank #${newRank}`);
+      
+      // Step 14: Update snapshot status to completed
+      await this.snapshotRepository.update(
+        { id: snapshot.id },
+        { status: SnapshotStatus.COMPLETED }
+      );
       
       this.logger.log(`
         ========================================
         EVALUATION COMPLETE
         ========================================
         Snapshot ID: ${job.snapshotId}
+        Team: ${snapshot.team.name}
+        Project: ${snapshot.project.title}
         Static Score: ${staticScore.toFixed(2)}/100 (60% weight)
         AI Score: ${aiScore.toFixed(2)}/100 (40% weight)
         Final Score: ${finalScore.toFixed(2)}/100
+        Rank: #${newRank}
         ========================================
       `);
       
-      // Step 12: Cleanup
+      // Step 15: Cleanup
       await this.cleanup(workDir);
       
     } catch (error) {
       this.logger.error(`Evaluation failed: ${error.message}`, error.stack);
+      
+      // Update snapshot status to failed
+      try {
+        await this.snapshotRepository.update(
+          { id: job.snapshotId },
+          { status: SnapshotStatus.FAILED }
+        );
+      } catch (updateError) {
+        this.logger.error(`Failed to update snapshot status: ${updateError.message}`);
+      }
       
       // Cleanup on error
       if (workDir) {

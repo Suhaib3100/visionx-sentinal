@@ -10,6 +10,8 @@ import workerConfig from './config/worker.config';
 
 import { SQSModule } from './modules/sqs/sqs.module';
 import { EvaluationModule } from './modules/evaluation/evaluation.module';
+import { ScoringModule } from './modules/scoring/scoring.module';
+import { LeaderboardModule } from './modules/leaderboard/leaderboard.module';
 
 @Module({
   imports: [
@@ -26,13 +28,19 @@ import { EvaluationModule } from './modules/evaluation/evaluation.module';
         username: configService.get<string>('database.username'),
         password: configService.get<string>('database.password'),
         database: configService.get<string>('database.database'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        entities: [
+          __dirname + '/entities/*.entity{.ts,.js}',
+          __dirname + '/**/*.entity{.ts,.js}',
+        ],
         synchronize: configService.get<boolean>('database.synchronize'),
+        logging: configService.get<boolean>('database.logging'),
       }),
     }),
     ScheduleModule.forRoot(),
     SQSModule,
     EvaluationModule,
+    ScoringModule,
+    LeaderboardModule,
   ],
 })
 export class AppModule {}
