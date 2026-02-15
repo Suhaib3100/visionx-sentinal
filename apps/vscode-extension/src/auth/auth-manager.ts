@@ -30,6 +30,9 @@ export class AuthManager {
       const config = vscode.workspace.getConfiguration('visionx');
       const apiUrl = config.get<string>('apiUrl', 'http://localhost:3000/api');
 
+      // Check if this is first-time authentication
+      const isFirstTime = this.authState === null;
+
       // Validate token with backend
       const response = await axios.post(`${apiUrl}/auth/validate`, { token });
 
@@ -43,6 +46,12 @@ export class AuthManager {
         };
 
         await this.context.globalState.update(AuthManager.AUTH_KEY, this.authState);
+        
+        // Store flag for first-time capture
+        if (isFirstTime) {
+          await this.context.globalState.update('visionx.firstTimeAuth', true);
+        }
+        
         return true;
       }
 
@@ -51,6 +60,15 @@ export class AuthManager {
       console.error('Authentication error:', error);
       return false;
     }
+  }
+
+  async isFirstTimeAuthentication(): Promise<boolean> {
+    const flag = this.context.globalState.get<boolean>('visionx.firstTimeAuth', false);
+    return flag;
+  }
+
+  async clearFirstTimeFlag(): Promise<void> {
+    await this.context.globalState.update('visionx.firstTimeAuth', false);
   }
 
   async isAuthenticated(): Promise<boolean> {

@@ -84,13 +84,24 @@ export async function activate(context: vscode.ExtensionContext) {
           statusBarManager?.updateStatus('authenticated');
           webviewProvider?.refresh();
           snapshotsViewProvider?.refresh();
-          vscode.window.showInformationMessage('Successfully authenticated with VisionX!');
+          
+          // Check if this is first-time authentication
+          const isFirstTime = await authManager.isFirstTimeAuthentication();
+          
+          if (isFirstTime) {
+            vscode.window.showInformationMessage('🎉 Successfully authenticated! Creating initial snapshot...');
+            
+            // Clear the first-time flag
+            await authManager.clearFirstTimeFlag();
+            
+            // Perform initial capture automatically
+            await vscode.commands.executeCommand('visionx.evaluateNow');
+          } else {
+            vscode.window.showInformationMessage('Successfully authenticated with VisionX!');
+          }
           
           // Start auto-evaluation if enabled
           startAutoEvaluation();
-          
-          // Perform initial scan
-          await vscode.commands.executeCommand('visionx.evaluateNow');
         } else {
           vscode.window.showErrorMessage('Authentication failed. Please check your token.');
         }

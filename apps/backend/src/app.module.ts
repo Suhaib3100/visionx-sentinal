@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { SnapshotsModule } from './modules/snapshots/snapshots.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SnapshotsModule } from './modules/snapshots/snapshots.module';
     TeamsModule,
     ProjectsModule,
     SnapshotsModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

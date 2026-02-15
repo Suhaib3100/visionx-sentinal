@@ -27,7 +27,8 @@ export class ProjectsService {
 
   async findAll(): Promise<Project[]> {
     return this.projectRepository.find({
-      relations: ['team'],
+      relations: ['team', 'snapshots'],
+      order: { updatedAt: 'DESC' },
     });
   }
 

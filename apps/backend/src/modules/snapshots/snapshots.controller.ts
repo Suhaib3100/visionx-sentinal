@@ -35,6 +35,13 @@ export class SnapshotsController {
     return this.snapshotsService.findByTeamId(teamId);
   }
 
+  @Get('project/:projectId')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all snapshots for a project with quality metrics' })
+  findByProjectId(@Param('projectId') projectId: string): Promise<Snapshot[]> {
+    return this.snapshotsService.findByProjectId(projectId);
+  }
+
   @Post('upload/:projectId')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))

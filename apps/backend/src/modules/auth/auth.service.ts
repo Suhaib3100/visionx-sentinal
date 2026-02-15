@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { LoginDto, RegisterDto, AuthResponseDto, UserRole } from './dto/auth.dto';
+import { SessionsService } from '../sessions/sessions.service';
+import { ProjectsService } from '../projects/projects.service';
 
 // Temporary in-memory store (replace with database in real implementation)
 interface User {
@@ -28,6 +30,8 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly sessionsService: SessionsService,
+    private readonly projectsService: ProjectsService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
@@ -80,6 +84,13 @@ export class AuthService {
       
       // If token has teamId and projectId, it's a custom token - validate directly
       if (decoded.teamId && decoded.projectId) {
+        // Register session
+        this.sessionsService.registerSession(
+          decoded.teamId,
+          decoded.teamName || 'Unknown Team',
+          decoded.projectId
+        );
+
         return {
           valid: true,
           teamName: decoded.teamName || 'Unknown Team',
@@ -110,8 +121,38 @@ export class AuthService {
   }
 
   async generateCustomToken(teamName: string, teamId?: string, projectId?: string): Promise<{ token: string; tokenName: string; teamName: string; teamId: string; projectId: string }> {
-    const customTeamId = teamId || `team-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
-    const customProjectId = projectId || `project-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
+    // If teamId is provided (from admin panel), use it as-is (it's the UUID from database)
+    // Otherwise, generate a custom string ID for backward compatibility
+    const finalTeamId = teamId || `team-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
+    
+    // Default projectId based on team name
+    const defaultProjectId = `project-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
+    let finalProjectId: string = projectId || defaultProjectId;
+    
+    // If teamId is a UUID (from admin panel), find or create a default project
+    if (teamId && this.isUUID(teamId)) {
+      try {
+        // Try to find existing project for this team
+        const existingProject = await this.projectsService.findByTeamId(teamId);
+        finalProjectId = existingProject.id;
+      } catch (error) {
+        // Project doesn't exist, create a default one
+        try {
+          const newProject = await this.projectsService.create({
+            teamId: teamId,
+            title: `${teamName} Project`,
+            description: 'Default project for team',
+            category: 'General',
+            techStack: ['VS Code Extension'],
+          });
+          finalProjectId = newProject.id;
+        } catch (createError) {
+          // If creation fails (e.g., duplicate), try to get it again
+          const project = await this.projectsService.findByTeamId(teamId);
+          finalProjectId = project.id;
+        }
+      }
+    }
     
     // Generate token name: TEAMNAME-TOKEN
     const tokenName = `${teamName.toUpperCase().replace(/\s+/g, '-')}-TOKEN`;
@@ -120,9 +161,9 @@ export class AuthService {
       sub: 'dev-user',
       email: `${teamName.toLowerCase()}@dev.local`,
       role: UserRole.PARTICIPANT,
-      teamId: customTeamId,
+      teamId: finalTeamId,
       teamName: teamName,
-      projectId: customProjectId,
+      projectId: finalProjectId,
       tokenName: tokenName,
     };
 
@@ -132,9 +173,14 @@ export class AuthService {
       token,
       tokenName,
       teamName,
-      teamId: customTeamId,
-      projectId: customProjectId,
+      teamId: finalTeamId,
+      projectId: finalProjectId,
     };
+  }
+
+  private isUUID(str: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
   }
 
   private async generateTokens(user: User): Promise<AuthResponseDto> {

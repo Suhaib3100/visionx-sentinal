@@ -60,8 +60,16 @@ export class SnapshotsService {
 
   async findAll(): Promise<Snapshot[]> {
     return this.snapshotRepository.find({
-      relations: ['team', 'project'],
+      relations: ['team', 'project', 'staticMetrics'],
       order: { timestamp: 'DESC' },
+    });
+  }
+
+  async findByProjectId(projectId: string): Promise<Snapshot[]> {
+    return this.snapshotRepository.find({
+      where: { projectId },
+      relations: ['team', 'project', 'staticMetrics'],
+      order: { snapshotNumber: 'DESC' },
     });
   }
 
