@@ -1,7 +1,8 @@
 // VisionX Eval API Client
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+// Use /api proxy which forwards to backend (works with HTTPS on Vercel)
+const API_URL = '/api';
 
 class APIClient {
   private client: AxiosInstance;
