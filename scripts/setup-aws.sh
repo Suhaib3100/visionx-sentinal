@@ -92,48 +92,70 @@ fi
 
 # 2. Create Dead Letter Queue
 echo -e "\n${YELLOW}Creating SQS Dead Letter Queue: $SQS_DLQ_NAME${NC}"
-DLQ_URL=$(aws sqs create-queue \
-    --queue-name "$SQS_DLQ_NAME" \
-    --region "$AWS_REGION" \
-    --query 'QueueUrl' \
-    --output text 2>/dev/null || aws sqs get-queue-url --queue-name "$SQS_DLQ_NAME" --query 'QueueUrl' --output text)
+
+# Check if queue exists
+if aws sqs get-queue-url --queue-name "$SQS_DLQ_NAME" --region "$AWS_REGION" &> /dev/null; then
+    DLQ_URL=$(aws sqs get-queue-url --queue-name "$SQS_DLQ_NAME" --region "$AWS_REGION" --query 'QueueUrl' --output text)
+    echo -e "${YELLOW}⚠️  Dead Letter Queue already exists${NC}"
+else
+    DLQ_URL=$(aws sqs create-queue \
+        --queue-name "$SQS_DLQ_NAME" \
+        --region "$AWS_REGION" \
+        --query 'QueueUrl' \
+        --output text)
+    echo -e "${GREEN}✅ Dead Letter Queue created${NC}"
+fi
 
 DLQ_ARN=$(aws sqs get-queue-attributes \
     --queue-url "$DLQ_URL" \
     --attribute-names QueueArn \
+    --region "$AWS_REGION" \
     --query 'Attributes.QueueArn' \
     --output text)
 
-echo -e "${GREEN}✅ Dead Letter Queue created${NC}"
 echo "   URL: $DLQ_URL"
 
 # 3. Create Main SQS Queue
 echo -e "\n${YELLOW}Creating SQS Queue: $SQS_QUEUE_NAME${NC}"
 
-# Prepare redrive policy
-cat > /tmp/redrive-policy.json <<EOF
+# Check if queue exists
+if aws sqs get-queue-url --queue-name "$SQS_QUEUE_NAME" --region "$AWS_REGION" &> /dev/null; then
+    QUEUE_URL=$(aws sqs get-queue-url --queue-name "$SQS_QUEUE_NAME" --region "$AWS_REGION" --query 'QueueUrl' --output text)
+    echo -e "${YELLOW}⚠️  Queue already exists${NC}"
+else
+    # Create queue with basic attributes first
+    QUEUE_URL=$(aws sqs create-queue \
+        --queue-name "$SQS_QUEUE_NAME" \
+        --region "$AWS_REGION" \
+        --attributes VisibilityTimeout=300,MessageRetentionPeriod=345600,ReceiveMessageWaitTimeSeconds=20 \
+        --query 'QueueUrl' \
+        --output text)
+    
+    # Set redrive policy using file
+    cat > /tmp/queue-attributes.json <<EOF
 {
-    "deadLetterTargetArn": "$DLQ_ARN",
-    "maxReceiveCount": "3"
+  "RedrivePolicy": "{\"deadLetterTargetArn\":\"$DLQ_ARN\",\"maxReceiveCount\":\"3\"}"
 }
 EOF
-
-QUEUE_URL=$(aws sqs create-queue \
-    --queue-name "$SQS_QUEUE_NAME" \
-    --region "$AWS_REGION" \
-    --attributes VisibilityTimeout=300,MessageRetentionPeriod=345600,ReceiveMessageWaitTimeSeconds=20,RedrivePolicy="$(cat /tmp/redrive-policy.json | tr -d '\n')" \
-    --query 'QueueUrl' \
-    --output text 2>/dev/null || aws sqs get-queue-url --queue-name "$SQS_QUEUE_NAME" --query 'QueueUrl' --output text)
-
-rm /tmp/redrive-policy.json
+    
+    aws sqs set-queue-attributes \
+        --queue-url "$QUEUE_URL" \
+        --region "$AWS_REGION" \
+        --attributes file:///tmp/queue-attributes.json \
+        > /dev/null
+    
+    rm /tmp/queue-attributes.json
+    
+    echo -e "${GREEN}✅ SQS Queue created${NC}"
+fi
 
 QUEUE_ARN=$(aws sqs get-queue-attributes \
     --queue-url "$QUEUE_URL" \
     --attribute-names QueueArn \
+    --region "$AWS_REGION" \
     --query 'Attributes.QueueArn' \
     --output text)
 
-echo -e "${GREEN}✅ SQS Queue created${NC}"
 echo "   URL: $QUEUE_URL"
 
 # 4. Output environment variables
@@ -156,16 +178,20 @@ echo -e "${YELLOW}Testing SQS Queue...${NC}"
 TEST_MESSAGE='{
   "snapshotId": "test-snapshot-123",
   "s3Path": "snapshots/test-snapshot-123.tar.gz",
-  "projectId": "test-project-456"
+  "projectId": "test-project-456",
+  "teamId": "test-team-789"
 }'
 
-aws sqs send-message \
+if aws sqs send-message \
     --queue-url "$QUEUE_URL" \
+    --region "$AWS_REGION" \
     --message-body "$TEST_MESSAGE" \
     --message-attributes '{"Type":{"DataType":"String","StringValue":"test"}}' \
-    > /dev/null
-
-echo -e "${GREEN}✅ Test message sent to queue${NC}"
+    > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Test message sent to queue${NC}"
+else
+    echo -e "${YELLOW}⚠️  Test message failed (queue may need a moment to propagate)${NC}"
+fi
 echo ""
 echo -e "${YELLOW}Resources Created:${NC}"
 echo "  ✅ S3 Bucket: s3://$S3_BUCKET"

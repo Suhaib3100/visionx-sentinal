@@ -4,8 +4,10 @@ import { LintAnalyzerService } from './analyzers/lint-analyzer.service';
 import { ComplexityAnalyzerService } from './analyzers/complexity-analyzer.service';
 import { SecurityScannerService } from './analyzers/security-scanner.service';
 import { TestCoverageAnalyzerService } from './analyzers/test-coverage-analyzer.service';
+import { AIModule } from '../ai/ai.module';
 
 @Module({
+  imports: [AIModule],
   providers: [
     EvaluationOrchestratorService,
     LintAnalyzerService,
