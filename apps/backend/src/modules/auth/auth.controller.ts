@@ -33,4 +33,12 @@ export class AuthController {
   async validateToken(@Body() body: { token: string }): Promise<{ valid: boolean; teamId?: string; projectId?: string; isLocked?: boolean }> {
     return this.authService.validateToken(body.token);
   }
+
+  @Post('generate-custom-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate a custom token for development/testing' })
+  @ApiResponse({ status: 200, description: 'Custom token generated successfully' })
+  async generateCustomToken(@Body() body: { teamName: string; teamId?: string; projectId?: string }): Promise<{ token: string; teamName: string; teamId: string; projectId: string }> {
+    return this.authService.generateCustomToken(body.teamName, body.teamId, body.projectId);
+  }
 }

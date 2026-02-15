@@ -96,6 +96,29 @@ export class AuthService {
     }
   }
 
+  async generateCustomToken(teamName: string, teamId?: string, projectId?: string): Promise<{ token: string; teamName: string; teamId: string; projectId: string }> {
+    const customTeamId = teamId || `team-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
+    const customProjectId = projectId || `project-${teamName.toLowerCase().replace(/\s+/g, '-')}`;
+
+    const payload = {
+      sub: 'dev-user',
+      email: `${teamName.toLowerCase()}@dev.local`,
+      role: UserRole.PARTICIPANT,
+      teamId: customTeamId,
+      teamName: teamName,
+      projectId: customProjectId,
+    };
+
+    const token = this.jwtService.sign(payload, { expiresIn: '30d' });
+
+    return {
+      token,
+      teamName,
+      teamId: customTeamId,
+      projectId: customProjectId,
+    };
+  }
+
   private async generateTokens(user: User): Promise<AuthResponseDto> {
     const payload = {
       sub: user.id,

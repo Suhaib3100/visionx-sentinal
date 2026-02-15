@@ -5,12 +5,13 @@ import { SnapshotEngine } from './snapshot/snapshot-engine';
 import { WorkspaceScanner } from './workspace/workspace-scanner';
 import { APIClient } from './api/api-client';
 import { StatusBarManager } from './ui/statusbar-manager';
-import { ProjectViewProvider, SnapshotsViewProvider } from './ui/sidebar-provider';
+import { SnapshotsViewProvider } from './ui/sidebar-provider';
+import { VisionXWebviewProvider } from './ui/webview-provider';
 
 let snapshotEngine: SnapshotEngine | undefined;
 let statusBarManager: StatusBarManager | undefined;
 let autoEvaluateTimer: NodeJS.Timeout | undefined;
-let projectViewProvider: ProjectViewProvider | undefined;
+let webviewProvider: VisionXWebviewProvider | undefined;
 let snapshotsViewProvider: SnapshotsViewProvider | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -30,15 +31,26 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register sidebar views FIRST
     try {
-      projectViewProvider = new ProjectViewProvider(authManager, apiClient);
-      snapshotsViewProvider = new SnapshotsViewProvider(authManager, apiClient);
+      // Register webview provider for dashboard
+      webviewProvider = new VisionXWebviewProvider(
+        context.extensionUri,
+        authManager,
+        apiClient
+      );
+      context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+          VisionXWebviewProvider.viewType,
+          webviewProvider
+        )
+      );
 
-      vscode.window.registerTreeDataProvider('visionx.projectView', projectViewProvider);
+      // Register snapshots tree view
+      snapshotsViewProvider = new SnapshotsViewProvider(authManager, apiClient);
       vscode.window.registerTreeDataProvider('visionx.snapshotsView', snapshotsViewProvider);
 
-      console.log('VisionX: Tree data providers registered successfully');
+      console.log('VisionX: View providers registered successfully');
     } catch (viewError) {
-      console.error('VisionX: Failed to register tree data providers:', viewError);
+      console.error('VisionX: Failed to register view providers:', viewError);
     }
 
     // Check if already authenticated
@@ -50,7 +62,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register refresh command BEFORE other commands
     vscode.commands.registerCommand('visionx.refreshView', () => {
       console.log('VisionX: Refresh command called');
-      projectViewProvider?.refresh();
+      webviewProvider?.refresh();
       snapshotsViewProvider?.refresh();
     });
     
@@ -70,7 +82,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const success = await authManager.authenticate(token);
         if (success) {
           statusBarManager?.updateStatus('authenticated');
-          projectViewProvider?.refresh();
+          webviewProvider?.refresh();
           snapshotsViewProvider?.refresh();
           vscode.window.showInformationMessage('Successfully authenticated with VisionX!');
           
@@ -178,7 +190,7 @@ export async function activate(context: vscode.ExtensionContext) {
       stopAutoEvaluation();
       await authManager.logout();
       statusBarManager?.updateStatus('disconnected');
-      projectViewProvider?.refresh();
+      webviewProvider?.refresh();
       snapshotsViewProvider?.refresh();
       vscode.window.showInformationMessage('Disconnected from VisionX');
     });

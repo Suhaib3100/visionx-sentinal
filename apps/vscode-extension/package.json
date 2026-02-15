@@ -27,8 +27,9 @@
     "views": {
       "visionx-sidebar": [
         {
-          "id": "visionx.projectView",
-          "name": "Project Status"
+          "type": "webview",
+          "id": "visionx-dashboard",
+          "name": "Dashboard"
         },
         {
           "id": "visionx.snapshotsView",
