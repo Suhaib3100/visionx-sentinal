@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+.DS_Store
+coverage
+.vscode
+.idea
+*.test.ts
+*.spec.ts
+test/

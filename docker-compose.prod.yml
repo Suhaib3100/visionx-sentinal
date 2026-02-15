@@ -1,0 +1,61 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: visionx-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./apps/backend/.env
+    depends_on:
+      - redis
+    networks:
+      - visionx-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    container_name: visionx-worker
+    restart: unless-stopped
+    env_file:
+      - ./apps/worker/.env
+    depends_on:
+      - redis
+    networks:
+      - visionx-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: visionx-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - visionx-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  visionx-network:
+    driver: bridge

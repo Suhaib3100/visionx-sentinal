@@ -3,7 +3,7 @@
   "displayName": "VisionX Eval",
   "description": "Automated hackathon project evaluation extension",
   "version": "0.0.1",
-  "publisher": "visionx",
+  "publisher": "SuhaibKing",
   "engines": {
     "vscode": "^1.109.0"
   },
@@ -119,11 +119,12 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "vsce-package": "vsce package --no-yarn"
+    "vsce-package": "vsce package --no-yarn",
+    "vsce-publish": "vsce publish --no-yarn"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/visionx/visionx-eval.git"
+    "url": "https://github.com/Suhaib3100/visionx-sentinal.git"
   },
   "devDependencies": {
     "@types/node": "^18.19.130",
