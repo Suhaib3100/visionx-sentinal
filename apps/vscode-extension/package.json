@@ -95,6 +95,18 @@
           "type": "boolean",
           "default": true,
           "description": "Enable automatic evaluation every 45 minutes"
+        },
+        "visionx.autoCaptureThreshold": {
+          "type": "number",
+          "default": 125,
+          "minimum": 50,
+          "maximum": 500,
+          "description": "Automatically capture snapshot after this many lines have changed (default: 125)"
+        },
+        "visionx.autoCaptureOnGit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically capture snapshot after git commits (default: true)"
         }
       }
     }

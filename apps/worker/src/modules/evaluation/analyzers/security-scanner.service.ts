@@ -151,12 +151,12 @@ export class SecurityScannerService {
       return 100;
     }
     
-    // Weight by severity
+    // Weight by severity  - more lenient scoring
     const severityWeights = {
-      critical: 20,
-      high: 10,
-      medium: 5,
-      low: 2,
+      critical: 15,
+      high: 8,
+      medium: 3,
+      low: 1,
     };
     
     const totalDeductions = issues.reduce(
@@ -164,7 +164,10 @@ export class SecurityScannerService {
       0
     );
     
-    return Math.max(0, 100 - totalDeductions);
+    // Cap deductions at reasonable level - don't penalize too harshly
+    const normalizedDeductions = Math.min(totalDeductions, 80);
+    
+    return Math.max(20, 100 - normalizedDeductions);
   }
 
   private async findCodeFiles(dir: string): Promise<string[]> {

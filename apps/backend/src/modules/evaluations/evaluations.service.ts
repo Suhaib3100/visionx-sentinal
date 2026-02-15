@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Snapshot, SnapshotStatus } from '../snapshots/entities/snapshot.entity';
 import { StaticMetrics } from './entities/static-metrics.entity';
+import { FinalScore } from './entities/final-score.entity';
+import { AIReport } from './entities/ai-report.entity';
 
 export interface EvaluationSummary {
   id: string;
@@ -32,6 +34,55 @@ export interface SystemStats {
   topScore: number | null;
 }
 
+export interface EvaluationDetail {
+  snapshot: {
+    id: string;
+    snapshotNumber: number;
+    teamName: string;
+    projectTitle: string;
+    status: string;
+    createdAt: Date;
+    s3Key: string;
+    size: number;
+    metadata: any;
+  };
+  scores: {
+    final: number | null;
+    static: number | null;
+    ai: number | null;
+    rank: number | null;
+  };
+  staticMetrics: {
+    lintScore: number;
+    complexityScore: number;
+    securityScore: number;
+    testCoverageScore: number;
+    totalScore: number;
+    lintIssues: any[];
+    complexityMetrics: any;
+    securityIssues: any[];
+    testCoverage: any;
+  } | null;
+  aiReport: {
+    creativityScore: number;
+    innovationScore: number;
+    codeQualityScore: number;
+    architectureScore: number;
+    documentationScore: number;
+    overallScore: number;
+    summary: string;
+    feedback: Array<{
+      category: string;
+      score: number;
+      positives: string[];
+      negatives: string[];
+      suggestions: string[];
+    }>;
+    model: string;
+    tokensUsed: number;
+  } | null;
+}
+
 @Injectable()
 export class EvaluationsService {
   constructor(
@@ -39,11 +90,15 @@ export class EvaluationsService {
     private snapshotRepository: Repository<Snapshot>,
     @InjectRepository(StaticMetrics)
     private metricsRepository: Repository<StaticMetrics>,
+    @InjectRepository(FinalScore)
+    private finalScoreRepository: Repository<FinalScore>,
+    @InjectRepository(AIReport)
+    private aiReportRepository: Repository<AIReport>,
   ) {}
 
   async getRecentEvaluations(limit = 20): Promise<EvaluationSummary[]> {
     const snapshots = await this.snapshotRepository.find({
-      relations: ['team', 'project', 'staticMetrics'],
+      relations: ['team', 'project', 'staticMetrics', 'finalScore'],
       order: { createdAt: 'DESC' },
       take: limit,
     });
@@ -54,14 +109,14 @@ export class EvaluationsService {
       teamName: snapshot.team?.name || 'Unknown Team',
       projectTitle: snapshot.project?.title || 'Unknown Project',
       status: snapshot.status,
-      finalScore: snapshot.staticMetrics?.totalScore || null,
+      finalScore: snapshot.finalScore ? parseFloat(snapshot.finalScore.totalScore.toString()) : null,
       createdAt: snapshot.createdAt,
       metrics: snapshot.staticMetrics ? {
-        lintScore: snapshot.staticMetrics.lintScore,
-        complexityScore: snapshot.staticMetrics.complexityScore,
-        securityScore: snapshot.staticMetrics.securityScore,
-        testCoverageScore: snapshot.staticMetrics.codeQualityScore || 0,
-        totalScore: snapshot.staticMetrics.totalScore,
+        lintScore: parseFloat(snapshot.staticMetrics.lintScore.toString()),
+        complexityScore: parseFloat(snapshot.staticMetrics.complexityScore.toString()),
+        securityScore: parseFloat(snapshot.staticMetrics.securityScore.toString()),
+        testCoverageScore: parseFloat((snapshot.staticMetrics.codeQualityScore || 0).toString()),
+        totalScore: parseFloat(snapshot.staticMetrics.totalScore.toString()),
       } : null,
     }));
   }
@@ -115,11 +170,11 @@ export class EvaluationsService {
       },
     });
 
-    // Average and top scores
-    const metricsWithScores = await this.metricsRepository
-      .createQueryBuilder('metrics')
-      .select('AVG(metrics.totalScore)', 'avgScore')
-      .addSelect('MAX(metrics.totalScore)', 'maxScore')
+    // Average and top scores from final scores
+    const scoresWithStats = await this.finalScoreRepository
+      .createQueryBuilder('score')
+      .select('AVG(score.totalScore)', 'avgScore')
+      .addSelect('MAX(score.totalScore)', 'maxScore')
       .getRawOne();
 
     return {
@@ -129,8 +184,67 @@ export class EvaluationsService {
       failedEvaluations,
       evaluationsToday,
       evaluationsThisWeek,
-      averageScore: metricsWithScores?.avgScore ? parseFloat(metricsWithScores.avgScore) : null,
-      topScore: metricsWithScores?.maxScore ? parseFloat(metricsWithScores.maxScore) : null,
+      averageScore: scoresWithStats?.avgScore ? parseFloat(scoresWithStats.avgScore) : null,
+      topScore: scoresWithStats?.maxScore ? parseFloat(scoresWithStats.maxScore) : null,
+    };
+  }
+
+  async getEvaluationDetails(snapshotId: string): Promise<EvaluationDetail> {
+    const snapshot = await this.snapshotRepository.findOne({
+      where: { id: snapshotId },
+      relations: ['team', 'project', 'staticMetrics', 'finalScore'],
+    });
+
+    if (!snapshot) {
+      throw new NotFoundException(`Evaluation with ID ${snapshotId} not found`);
+    }
+
+    // Fetch AI report separately
+    const aiReport = await this.aiReportRepository.findOne({
+      where: { snapshotId },
+    });
+
+    return {
+      snapshot: {
+        id: snapshot.id,
+        snapshotNumber: snapshot.snapshotNumber,
+        teamName: snapshot.team?.name || 'Unknown Team',
+        projectTitle: snapshot.project?.title || 'Unknown Project',
+        status: snapshot.status,
+        createdAt: snapshot.createdAt,
+        s3Key: snapshot.s3Key,
+        size: parseInt(snapshot.size.toString()),
+        metadata: snapshot.metadata,
+      },
+      scores: {
+        final: snapshot.finalScore ? parseFloat(snapshot.finalScore.totalScore.toString()) : null,
+        static: snapshot.finalScore ? parseFloat(snapshot.finalScore.staticScore.toString()) : null,
+        ai: snapshot.finalScore ? parseFloat(snapshot.finalScore.aiScore.toString()) : null,
+        rank: snapshot.finalScore?.rank || null,
+      },
+      staticMetrics: snapshot.staticMetrics ? {
+        lintScore: parseFloat(snapshot.staticMetrics.lintScore.toString()),
+        complexityScore: parseFloat(snapshot.staticMetrics.complexityScore.toString()),
+        securityScore: parseFloat(snapshot.staticMetrics.securityScore.toString()),
+        testCoverageScore: parseFloat((snapshot.staticMetrics.codeQualityScore || 0).toString()),
+        totalScore: parseFloat(snapshot.staticMetrics.totalScore.toString()),
+        lintIssues: snapshot.staticMetrics.lintIssues || [],
+        complexityMetrics: snapshot.staticMetrics.complexityMetrics || {},
+        securityIssues: snapshot.staticMetrics.securityIssues || [],
+        testCoverage: snapshot.staticMetrics.testCoverage || null,
+      } : null,
+      aiReport: aiReport ? {
+        creativityScore: parseFloat(aiReport.creativityScore.toString()),
+        innovationScore: parseFloat(aiReport.innovationScore.toString()),
+        codeQualityScore: parseFloat(aiReport.codeQualityScore.toString()),
+        architectureScore: parseFloat(aiReport.architectureScore.toString()),
+        documentationScore: parseFloat(aiReport.documentationScore.toString()),
+        overallScore: parseFloat(aiReport.overallScore.toString()),
+        summary: aiReport.summary,
+        feedback: aiReport.feedback,
+        model: aiReport.model,
+        tokensUsed: aiReport.tokensUsed,
+      } : null,
     };
   }
 }

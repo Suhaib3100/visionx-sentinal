@@ -11,6 +11,7 @@ import {
 import { Team } from '../../teams/entities/team.entity';
 import { Project } from '../../projects/entities/project.entity';
 import { StaticMetrics } from '../../evaluations/entities/static-metrics.entity';
+import { FinalScore } from '../../evaluations/entities/final-score.entity';
 
 export enum SnapshotStatus {
   PENDING = 'pending',
@@ -79,4 +80,7 @@ export class Snapshot {
 
   @OneToOne(() => StaticMetrics, metrics => metrics.snapshot)
   staticMetrics: StaticMetrics;
+
+  @OneToOne(() => FinalScore, (finalScore) => finalScore.snapshot)
+  finalScore: FinalScore;
 }

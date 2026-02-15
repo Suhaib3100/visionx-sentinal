@@ -7,6 +7,7 @@ import {
   ChangeMessageVisibilityCommand,
   Message,
 } from '@aws-sdk/client-sqs';
+import { EvaluationOrchestratorService } from '../evaluation/evaluation-orchestrator.service';
 
 export interface EvaluationJob {
   snapshotId: string;
@@ -25,7 +26,10 @@ export class SQSConsumerService implements OnModuleInit {
   private visibilityTimeout: number;
   private activeJobs = 0;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly evaluationOrchestrator: EvaluationOrchestratorService,
+  ) {
     const awsConfig = this.configService.get('aws');
     this.sqsClient = new SQSClient({
       region: awsConfig.region,
@@ -137,9 +141,9 @@ export class SQSConsumerService implements OnModuleInit {
   }
 
   private async handleJob(job: EvaluationJob) {
-    // This will be implemented by injecting the EvaluationOrchestrator
-    // For now, just log
+    // Call the evaluation orchestrator to process the snapshot
     this.logger.log(`Job handler called for: ${JSON.stringify(job)}`);
+    await this.evaluationOrchestrator.processEvaluation(job);
   }
 
   private sleep(ms: number): Promise<void> {

@@ -82,4 +82,53 @@ export class SessionsService {
   getSessionCount(): number {
     return this.activeSessions.size;
   }
+
+  triggerBulkCapture(): {
+    success: boolean;
+    message: string;
+    activeTeams: Array<{ teamId: string; teamName: string; projectId: string }>;
+    count: number;
+  } {
+    const activeSessions = this.getActiveSessions();
+    
+    // Filter only connected sessions (not idle or disconnected)
+    const connectedSessions = activeSessions.filter(
+      s => s.status === 'connected' || s.status === 'idle'
+    );
+
+    const activeTeams = connectedSessions.map(session => ({
+      teamId: session.teamId,
+      teamName: session.teamName,
+      projectId: session.projectId,
+    }));
+
+    // Mark all sessions for capture trigger
+    for (const session of connectedSessions) {
+      (session as any).captureTrigger = Date.now();
+    }
+
+    return {
+      success: true,
+      message: `Bulk capture triggered for ${activeTeams.length} active team(s)`,
+      activeTeams,
+      count: activeTeams.length,
+    };
+  }
+
+  shouldTriggerCapture(teamId: string): boolean {
+    for (const session of this.activeSessions.values()) {
+      if (session.teamId === teamId && (session as any).captureTrigger) {
+        const triggerTime = (session as any).captureTrigger;
+        const now = Date.now();
+        
+        // Capture trigger is valid for 2 minutes
+        if (now - triggerTime < 2 * 60 * 1000) {
+          // Clear the trigger flag
+          delete (session as any).captureTrigger;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 }

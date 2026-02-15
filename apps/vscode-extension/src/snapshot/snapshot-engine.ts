@@ -23,7 +23,7 @@ export class SnapshotEngine {
     private workspaceScanner: WorkspaceScanner
   ) {}
 
-  async createAndUploadSnapshot(isFinal = false): Promise<SnapshotResult> {
+  async createAndUploadSnapshot(isFinal = false, force = false): Promise<SnapshotResult> {
     try {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       if (!workspaceFolder) {
@@ -41,8 +41,8 @@ export class SnapshotEngine {
         return { success: false, message: 'Failed to scan workspace' };
       }
 
-      // Check if anything changed (unless final submission)
-      if (!isFinal && this.lastHash === metadata.projectHash) {
+      // Check if anything changed (unless final submission or forced)
+      if (!isFinal && !force && this.lastHash === metadata.projectHash) {
         return { success: true, skipped: true };
       }
 

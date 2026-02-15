@@ -13,13 +13,29 @@ let statusBarManager: StatusBarManager | undefined;
 let autoEvaluateTimer: NodeJS.Timeout | undefined;
 let webviewProvider: VisionXWebviewProvider | undefined;
 let snapshotsViewProvider: SnapshotsViewProvider | undefined;
+let apiClient: APIClient | undefined;
+
+// Auto-capture tracking
+let lineChangeCounter = 0;
+const AUTO_CAPTURE_THRESHOLD = 125; // Trigger at 125 lines changed
+let isAutoCapturing = false;
+
+// Git event tracking
+let gitExtension: any = undefined;
+let gitAPI: any = undefined;
+
+// Bulk capture polling
+let bulkCaptureCheckTimer: NodeJS.Timeout | undefined;
+
+// Heartbeat for session tracking
+let heartbeatTimer: NodeJS.Timeout | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   try {
     console.log('VisionX Eval: Starting activation...');
 
     const authManager = new AuthManager(context);
-    const apiClient = new APIClient(authManager);
+    apiClient = new APIClient(authManager);
     const workspaceScanner = new WorkspaceScanner();
     
     console.log('VisionX Eval: Managers created');
@@ -102,6 +118,8 @@ export async function activate(context: vscode.ExtensionContext) {
           
           // Start auto-evaluation if enabled
           startAutoEvaluation();
+          startBulkCapturePolling();
+          startHeartbeat();
         } else {
           vscode.window.showErrorMessage('Authentication failed. Please check your token.');
         }
@@ -120,14 +138,16 @@ export async function activate(context: vscode.ExtensionContext) {
         statusBarManager?.updateStatus('evaluating');
         vscode.window.showInformationMessage('Creating snapshot...');
         
-        const result = await snapshotEngine?.createAndUploadSnapshot();
+        // Always force snapshot - user requested it
+        const result = await snapshotEngine?.createAndUploadSnapshot(false, true);
         
         if (result?.success) {
+          // Reset line change counter after successful manual capture
+          lineChangeCounter = 0;
+          
           statusBarManager?.updateStatus('authenticated');
           vscode.window.showInformationMessage(
-            result.skipped 
-              ? 'No changes detected since last snapshot' 
-              : `Snapshot uploaded successfully! Size: ${result.compressedSize}`
+            `Snapshot uploaded successfully! Size: ${result.compressedSize}`
           );
         } else {
           statusBarManager?.updateStatus('error');
@@ -183,6 +203,11 @@ export async function activate(context: vscode.ExtensionContext) {
           return;
         }
 
+        if (!apiClient) {
+          vscode.window.showErrorMessage('API client not initialized');
+          return;
+        }
+
         const stats = await apiClient.getProjectStats();
         const panel = vscode.window.createWebviewPanel(
           'visionxStats',
@@ -199,6 +224,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand('visionx.disconnect', async () => {
       stopAutoEvaluation();
+      stopBulkCapturePolling();
+      stopHeartbeat();
       await authManager.logout();
       statusBarManager?.updateStatus('disconnected');
       webviewProvider?.refresh();
@@ -209,7 +236,15 @@ export async function activate(context: vscode.ExtensionContext) {
       // Start auto-evaluation if authenticated
     if (isAuthenticated) {
       startAutoEvaluation();
+      startBulkCapturePolling();
+      startHeartbeat();
     }
+
+    // Setup auto-capture based on line changes
+    setupAutoCapture(context);
+    
+    // Setup git event listeners
+    setupGitEventListeners(context);
   
     console.log('VisionX Eval extension activation complete');
   } catch (error) {
@@ -243,6 +278,277 @@ function stopAutoEvaluation() {
   if (autoEvaluateTimer) {
     clearInterval(autoEvaluateTimer);
     autoEvaluateTimer = undefined;
+  }
+}
+
+function startBulkCapturePolling() {
+  // Clear existing timer
+  if (bulkCaptureCheckTimer) {
+    clearInterval(bulkCaptureCheckTimer);
+  }
+
+  // Poll every 30 seconds to check if admin triggered bulk capture
+  bulkCaptureCheckTimer = setInterval(async () => {
+    try {
+      if (!apiClient) {
+        return;
+      }
+
+      const result = await apiClient.checkCaptureTrigger();
+
+      if (result.shouldCapture && !isAutoCapturing) {
+        console.log('VisionX: Bulk capture triggered by admin');
+        
+        isAutoCapturing = true;
+        
+        try {
+          const action = await vscode.window.showInformationMessage(
+            '📢 Admin requested snapshot capture for all teams!',
+            'Capture Now',
+            'Skip'
+          );
+
+          if (action === 'Skip') {
+            isAutoCapturing = false;
+            return;
+          }
+
+          statusBarManager?.updateStatus('evaluating');
+          await vscode.commands.executeCommand('visionx.evaluateNow');
+          
+          vscode.window.showInformationMessage('Bulk capture completed successfully!');
+        } catch (error) {
+          console.error('VisionX: Bulk capture failed:', error);
+          vscode.window.showErrorMessage(`Bulk capture failed: ${error}`);
+        } finally {
+          isAutoCapturing = false;
+          statusBarManager?.updateStatus('authenticated');
+        }
+      }
+    } catch (error) {
+      // Silently fail - don't spam errors
+      console.log('VisionX: Bulk capture check failed:', error);
+    }
+  }, 30000); // Check every 30 seconds
+}
+
+function stopBulkCapturePolling() {
+  if (bulkCaptureCheckTimer) {
+    clearInterval(bulkCaptureCheckTimer);
+    bulkCaptureCheckTimer = undefined;
+  }
+}
+
+function startHeartbeat() {
+  // Clear existing timer
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+  }
+
+  // Send initial heartbeat immediately
+  if (apiClient) {
+    apiClient.sendHeartbeat().catch((err: Error) => {
+      console.log('VisionX: Initial heartbeat failed:', err);
+    });
+  }
+
+  // Send heartbeat every 60 seconds to maintain session
+  heartbeatTimer = setInterval(async () => {
+    try {
+      if (apiClient) {
+        await apiClient.sendHeartbeat();
+        console.log('VisionX: Heartbeat sent');
+      }
+    } catch (error) {
+      console.log('VisionX: Heartbeat failed:', error);
+    }
+  }, 60000); // Every 60 seconds
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = undefined;
+  }
+}
+
+function setupAutoCapture(context: vscode.ExtensionContext) {
+  // Track content changes across all text documents
+  const changeListener = vscode.workspace.onDidChangeTextDocument(async (event) => {
+    // Ignore changes in non-project files
+    if (!event.document.uri.fsPath.includes(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '')) {
+      return;
+    }
+
+    // Ignore certain file types
+    const fileName = event.document.fileName;
+    if (fileName.includes('node_modules') || 
+        fileName.includes('.git') || 
+        fileName.includes('dist') ||
+        fileName.includes('build') ||
+        fileName.endsWith('.log')) {
+      return;
+    }
+
+    // Count line changes
+    let linesChanged = 0;
+    for (const change of event.contentChanges) {
+      const addedLines = change.text.split('\n').length - 1;
+      const removedLines = change.range.end.line - change.range.start.line;
+      linesChanged += Math.abs(addedLines - removedLines) + Math.min(addedLines, removedLines);
+    }
+
+    lineChangeCounter += linesChanged;
+
+    // Get threshold from configuration
+    const config = vscode.workspace.getConfiguration('visionx');
+    const threshold = config.get<number>('autoCaptureThreshold', AUTO_CAPTURE_THRESHOLD);
+
+    // Trigger auto-capture when threshold is reached
+    if (lineChangeCounter >= threshold && !isAutoCapturing) {
+      isAutoCapturing = true;
+      
+      // Show notification
+      const action = await vscode.window.showInformationMessage(
+        `${lineChangeCounter} lines changed. Auto-capturing snapshot...`,
+        'Capture Now',
+        'Skip'
+      );
+
+      if (action === 'Skip') {
+        lineChangeCounter = 0;
+        isAutoCapturing = false;
+        return;
+      }
+
+      try {
+        if (statusBarManager) {
+          statusBarManager.updateStatus('evaluating');
+        }
+
+        await vscode.commands.executeCommand('visionx.evaluateNow');
+        
+        // Reset counter after successful capture
+        lineChangeCounter = 0;
+        
+        vscode.window.showInformationMessage('Auto-capture completed successfully!');
+      } catch (error) {
+        console.error('Auto-capture failed:', error);
+        vscode.window.showErrorMessage(`Auto-capture failed: ${error}`);
+        if (statusBarManager) {
+          statusBarManager.updateStatus('error');
+        }
+      } finally {
+        isAutoCapturing = false;
+        if (statusBarManager) {
+          statusBarManager.updateStatus('authenticated');
+        }
+      }
+    }
+  });
+
+  context.subscriptions.push(changeListener);
+}
+
+async function setupGitEventListeners(context: vscode.ExtensionContext) {
+  try {
+    // Get VS Code's built-in Git extension
+    gitExtension = vscode.extensions.getExtension('vscode.git');
+    
+    if (!gitExtension) {
+      console.log('VisionX: Git extension not found');
+      return;
+    }
+
+    if (!gitExtension.isActive) {
+      await gitExtension.activate();
+    }
+
+    gitAPI = gitExtension.exports.getAPI(1);
+    
+    if (!gitAPI) {
+      console.log('VisionX: Git API not available');
+      return;
+    }
+
+    console.log('VisionX: Git extension connected successfully');
+
+    // Get the repository for the current workspace
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      return;
+    }
+
+    // Watch for repository changes
+    gitAPI.onDidOpenRepository((repo: any) => {
+      console.log('VisionX: Repository opened, setting up listeners');
+      setupRepositoryListeners(repo);
+    });
+
+    // Setup listeners for existing repositories
+    if (gitAPI.repositories && gitAPI.repositories.length > 0) {
+      gitAPI.repositories.forEach((repo: any) => {
+        setupRepositoryListeners(repo);
+      });
+    }
+  } catch (error) {
+    console.error('VisionX: Failed to setup git listeners:', error);
+  }
+}
+
+function setupRepositoryListeners(repo: any) {
+  try {
+    // Listen to state changes (commits, pushes, etc.)
+    const disposable = repo.state.onDidChange(async () => {
+      const config = vscode.workspace.getConfiguration('visionx');
+      const autoCaptureOnGit = config.get<boolean>('autoCaptureOnGit', true);
+      
+      if (!autoCaptureOnGit || isAutoCapturing) {
+        return;
+      }
+
+      // Check if a commit just happened by comparing HEAD
+      const headCommit = repo.state.HEAD?.commit;
+      
+      if (headCommit && headCommit !== (repo as any).lastKnownCommit) {
+        (repo as any).lastKnownCommit = headCommit;
+        
+        console.log('VisionX: Git commit detected, triggering auto-capture');
+        
+        isAutoCapturing = true;
+        
+        try {
+          // Show notification
+          const action = await vscode.window.showInformationMessage(
+            'Git commit detected. Auto-capturing snapshot...',
+            'Capture Now',
+            'Skip'
+          );
+
+          if (action === 'Skip') {
+            isAutoCapturing = false;
+            return;
+          }
+
+          statusBarManager?.updateStatus('evaluating');
+          await vscode.commands.executeCommand('visionx.evaluateNow');
+          
+          vscode.window.showInformationMessage('Post-commit snapshot captured successfully!');
+        } catch (error) {
+          console.error('VisionX: Auto-capture after commit failed:', error);
+          vscode.window.showErrorMessage(`Auto-capture failed: ${error}`);
+          statusBarManager?.updateStatus('error');
+        } finally {
+          isAutoCapturing = false;
+          statusBarManager?.updateStatus('authenticated');
+        }
+      }
+    });
+
+    // Store disposable (optional: could add to context.subscriptions)
+    console.log('VisionX: Repository listeners configured');
+  } catch (error) {
+    console.error('VisionX: Failed to setup repository listeners:', error);
   }
 }
 
@@ -311,5 +617,7 @@ function generateStatsHTML(stats: any): string {
 
 export function deactivate() {
   stopAutoEvaluation();
+  stopBulkCapturePolling();
+  stopHeartbeat();
   statusBarManager?.dispose();
 }

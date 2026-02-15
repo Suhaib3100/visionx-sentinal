@@ -91,4 +91,46 @@ export class APIClient {
       return null;
     }
   }
+
+  async sendHeartbeat(): Promise<boolean> {
+    try {
+      const teamId = this.authManager.getTeamId();
+      const projectId = this.authManager.getProjectId();
+      const teamName = this.authManager.getTeamName();
+      
+      if (!teamId || !projectId) {
+        return false;
+      }
+
+      await this.client.post('/sessions/heartbeat', null, {
+        params: {
+          teamId,
+          teamName: teamName || 'Unknown Team',
+          projectId,
+        },
+      });
+
+      return true;
+    } catch (error) {
+      console.error('VisionX: Failed to send heartbeat:', error);
+      return false;
+    }
+  }
+
+  async checkCaptureTrigger(): Promise<{ shouldCapture: boolean; message: string }> {
+    try {
+      const teamId = this.authManager.getTeamId();
+      if (!teamId) {
+        return { shouldCapture: false, message: 'No team ID' };
+      }
+
+      const response = await this.client.get('/sessions/check-capture-trigger', {
+        params: { teamId },
+      });
+
+      return response.data;
+    } catch (error) {
+      return { shouldCapture: false, message: 'Check failed' };
+    }
+  }
 }

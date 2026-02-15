@@ -12,26 +12,25 @@ export class LintAnalyzerService {
     
     try {
       const eslint = new ESLint({
-        overrideConfigFile: true,
-        overrideConfig: [
-          {
-            languageOptions: {
-              ecmaVersion: 2021,
-              sourceType: 'module',
-              globals: {
-                console: 'readonly',
-                process: 'readonly',
-                require: 'readonly',
-                module: 'readonly',
-              },
-            },
-            rules: {
-              'no-unused-vars': 'warn',
-              'no-undef': 'error',
-            },
+        useEslintrc: false,
+        overrideConfigFile: null,
+        baseConfig: {
+          env: {
+            node: true,
+            es2021: true,
           },
-        ],
-      });
+          parserOptions: {
+            ecmaVersion: 2021,
+            sourceType: 'module',
+          },
+          rules: {
+            'no-unused-vars': 'warn',
+            'no-undef': 'error',
+            'no-console': 'off',
+            'no-debugger': 'warn',
+          },
+        },
+      } as any);
 
       // Find all JS/TS files
       const files = await this.findJavaScriptFiles(workDir);

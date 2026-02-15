@@ -5,6 +5,8 @@ import { Snapshot, SnapshotStatus } from './entities/snapshot.entity';
 import { CreateSnapshotDto } from './dto/create-snapshot.dto';
 import { S3Service } from './services/s3.service';
 import { SQSPublisherService } from './services/sqs-publisher.service';
+import { SessionsService } from '../sessions/sessions.service';
+import { TeamsService } from '../teams/teams.service';
 
 @Injectable()
 export class SnapshotsService {
@@ -15,6 +17,8 @@ export class SnapshotsService {
     private readonly snapshotRepository: Repository<Snapshot>,
     private readonly s3Service: S3Service,
     private readonly sqsPublisher: SQSPublisherService,
+    private readonly sessionsService: SessionsService,
+    private readonly teamsService: TeamsService,
   ) {}
 
   async create(createSnapshotDto: CreateSnapshotDto): Promise<Snapshot> {
@@ -127,6 +131,20 @@ export class SnapshotsService {
           branch: metadata.branch,
         },
       });
+
+      // Register session for this team
+      try {
+        const team = await this.teamsService.findOne(metadata.teamId);
+        this.sessionsService.registerSession(
+          metadata.teamId,
+          team.name,
+          projectId,
+        );
+        this.logger.log(`Session registered for team: ${team.name}`);
+      } catch (error) {
+        this.logger.error(`Failed to register session: ${error.message}`);
+        // Don't fail the upload if session registration fails
+      }
 
       return {
         success: true,

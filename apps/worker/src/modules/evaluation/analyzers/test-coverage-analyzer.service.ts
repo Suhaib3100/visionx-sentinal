@@ -25,25 +25,31 @@ export class TestCoverageAnalyzerService {
       // Check for test frameworks in package.json
       const hasTestFramework = await this.checkTestFramework(workDir);
       
-      // Estimate coverage based on test ratio and test assertions
-      let estimatedCoverage = testRatio * 100;
+      // More lenient base scoring - start with minimum 30 if any tests exist
+      let baseScore = testFiles.length > 0 ? 30 : 0;
       
-      if (!hasTestFramework) {
-        estimatedCoverage *= 0.5; // Penalize if no test framework detected
+      // Add points for test ratio (up to 40 points)
+      baseScore += Math.min(40, testRatio * 400);
+      
+      // Add points for having test framework (up to 15 points)
+      if (hasTestFramework) {
+        baseScore += 15;
       }
       
       // Count test assertions for better accuracy
       const assertions = await this.countAssertions(testFiles);
       const assertionsPerTest = assertions / (testFiles.length || 1);
       
-      // Adjust score based on assertion quality
-      if (assertionsPerTest < 2) {
-        estimatedCoverage *= 0.7;
-      } else if (assertionsPerTest > 5) {
-        estimatedCoverage = Math.min(100, estimatedCoverage * 1.2);
+      // Add points for assertion quality (up to 15 points)
+      if (assertionsPerTest >= 10) {
+        baseScore += 15;
+      } else if (assertionsPerTest >= 5) {
+        baseScore += 10;
+      } else if (assertionsPerTest >= 2) {
+        baseScore += 5;
       }
       
-      const score = Math.min(100, estimatedCoverage);
+      const score = Math.min(100, baseScore);
       
       this.logger.log(
         `Test coverage analysis complete: ${testFiles.length} test files, ${codeFiles.length} code files, ${assertions} assertions, score: ${score.toFixed(2)}`

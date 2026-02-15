@@ -12,6 +12,8 @@ import { TeamsModule } from './modules/teams/teams.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { SnapshotsModule } from './modules/snapshots/snapshots.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { EvaluationsModule } from './modules/evaluations/evaluations.module';
+import { LeaderboardModule } from './modules/leaderboard/leaderboard.module';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { SessionsModule } from './modules/sessions/sessions.module';
     ProjectsModule,
     SnapshotsModule,
     SessionsModule,
+    EvaluationsModule,
+    LeaderboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,9 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToOne,
   JoinColumn,
 } from 'typeorm';
 import { Team } from '../../teams/entities/team.entity';
+import { Snapshot } from '../../snapshots/entities/snapshot.entity';
 
 export interface ScoreWeight {
   static: number;
@@ -64,4 +66,8 @@ export class FinalScore {
   @ManyToOne(() => Team, team => team.scores)
   @JoinColumn({ name: 'team_id' })
   team: Team;
+
+  @OneToOne(() => Snapshot, (snapshot) => snapshot.finalScore)
+  @JoinColumn({ name: 'snapshot_id' })
+  snapshot: Snapshot;
 }
