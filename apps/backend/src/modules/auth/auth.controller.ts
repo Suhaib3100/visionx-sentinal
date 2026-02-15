@@ -24,4 +24,13 @@ export class AuthController {
   async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
   }
+
+  @Post('validate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Validate authentication token for VS Code extension' })
+  @ApiResponse({ status: 200, description: 'Token validated successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid token' })
+  async validateToken(@Body() body: { token: string }): Promise<{ valid: boolean; teamId?: string; projectId?: string; isLocked?: boolean }> {
+    return this.authService.validateToken(body.token);
+  }
 }

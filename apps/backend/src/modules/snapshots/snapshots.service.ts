@@ -91,4 +91,53 @@ export class SnapshotsService {
     snapshot.status = status;
     return this.snapshotRepository.save(snapshot);
   }
+
+  async uploadFromExtension(
+    projectId: string,
+    file: any,
+    metadata: any,
+  ): Promise<{ success: boolean; snapshotId: string }> {
+    try {
+      // Upload file to S3
+      const s3Key = `snapshots/${projectId}/${Date.now()}-${file.originalname}`;
+      await this.s3Service.uploadFile(
+        s3Key,
+        file.buffer,
+        file.mimetype || 'application/gzip',
+      );
+
+      // Create snapshot record
+      const snapshot = await this.create({
+        teamId: metadata.teamId,
+        projectId,
+        s3Key,
+        hash: metadata.projectHash || 'unknown',
+        size: file.size || 0,
+        metadata: {
+          ...metadata,
+          commit: metadata.commit,
+          branch: metadata.branch,
+        },
+      });
+
+      return {
+        success: true,
+        snapshotId: snapshot.id,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to upload snapshot: ${error.message}`, error.stack);
+      throw new BadRequestException(`Failed to upload snapshot: ${error.message}`);
+    }
+  }
+
+  async getLatestHash(projectId: string): Promise<{ hash: string | null }> {
+    const latest = await this.snapshotRepository.findOne({
+      where: { projectId },
+      order: { timestamp: 'DESC' },
+    });
+
+    return {
+      hash: (latest?.metadata as any)?.projectHash || null,
+    };
+  }
 }

@@ -43,7 +43,7 @@ export class APIClient {
       formData.append('metadata', JSON.stringify(metadata));
 
       const response = await this.client.post(
-        `/projects/${projectId}/snapshots`,
+        `/snapshots/upload/${projectId}`,
         formData,
         {
           headers: {
@@ -54,7 +54,7 @@ export class APIClient {
 
       return {
         success: true,
-        snapshotId: response.data.id,
+        snapshotId: response.data.snapshotId,
       };
     } catch (error: any) {
       return {
@@ -85,7 +85,7 @@ export class APIClient {
         return null;
       }
 
-      const response = await this.client.get(`/projects/${projectId}/snapshots/latest`);
+      const response = await this.client.get(`/snapshots/project/${projectId}/latest`);
       return response.data?.hash || null;
     } catch (error) {
       return null;

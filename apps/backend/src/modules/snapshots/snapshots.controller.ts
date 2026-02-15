@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, UseGuards, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { SnapshotsService } from './snapshots.service';
 import { CreateSnapshotDto } from './dto/create-snapshot.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -32,5 +33,26 @@ export class SnapshotsController {
   @UseGuards(JwtAuthGuard)
   findByTeamId(@Param('teamId') teamId: string): Promise<Snapshot[]> {
     return this.snapshotsService.findByTeamId(teamId);
+  }
+
+  @Post('upload/:projectId')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload snapshot file from VS Code extension' })
+  async uploadSnapshot(
+    @Param('projectId') projectId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('metadata') metadata: string,
+  ): Promise<{ success: boolean; snapshotId: string }> {
+    const parsedMetadata = JSON.parse(metadata);
+    return this.snapshotsService.uploadFromExtension(projectId, file, parsedMetadata);
+  }
+
+  @Get('project/:projectId/latest')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get latest snapshot hash for change detection' })
+  async getLatestHash(@Param('projectId') projectId: string): Promise<{ hash: string | null }> {
+    return this.snapshotsService.getLatestHash(projectId);
   }
 }

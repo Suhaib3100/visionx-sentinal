@@ -74,6 +74,28 @@ export class AuthService {
     return this.users.find(u => u.id === userId) || null;
   }
 
+  async validateToken(token: string): Promise<{ valid: boolean; teamId?: string; projectId?: string; isLocked?: boolean }> {
+    try {
+      const decoded = this.jwtService.verify(token);
+      const user = await this.validateUser(decoded.sub);
+      
+      if (!user) {
+        return { valid: false };
+      }
+
+      // In a real implementation, fetch team and project from database
+      // For now, return mock data
+      return {
+        valid: true,
+        teamId: decoded.teamId || 'team-123',
+        projectId: decoded.projectId || 'project-456',
+        isLocked: false,
+      };
+    } catch (error) {
+      return { valid: false };
+    }
+  }
+
   private async generateTokens(user: User): Promise<AuthResponseDto> {
     const payload = {
       sub: user.id,

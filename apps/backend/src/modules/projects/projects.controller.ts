@@ -33,4 +33,11 @@ export class ProjectsController {
   findByTeamId(@Param('teamId') teamId: string): Promise<Project> {
     return this.projectsService.findByTeamId(teamId);
   }
+
+  @Get(':id/stats')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get project statistics for VS Code extension' })
+  async getProjectStats(@Param('id') id: string): Promise<any> {
+    return this.projectsService.getProjectStats(id);
+  }
 }

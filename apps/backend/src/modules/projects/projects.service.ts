@@ -56,4 +56,20 @@ export class ProjectsService {
 
     return project;
   }
+
+  async getProjectStats(id: string): Promise<any> {
+    const project = await this.findOne(id);
+    
+    // Get latest snapshot
+    const latestSnapshot = project.snapshots?.[0] || null;
+    
+    return {
+      projectId: project.id,
+      teamId: project.teamId,
+      snapshotCount: project.snapshots?.length || 0,
+      score: (latestSnapshot as any)?.finalScore?.finalScore || null,
+      rank: (latestSnapshot as any)?.finalScore?.rank || null,
+      lastEvaluated: latestSnapshot?.timestamp || null,
+    };
+  }
 }
