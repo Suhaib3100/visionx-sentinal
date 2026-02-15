@@ -4,9 +4,10 @@ const BACKEND_URL = process.env.BACKEND_API_URL || 'http://3.90.29.9:3000/api';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { proxy: string[] } }
+  { params }: { params: Promise<{ proxy: string[] }> }
 ) {
-  const path = params.proxy.join('/');
+  const { proxy } = await params;
+  const path = proxy.join('/');
   const searchParams = request.nextUrl.searchParams.toString();
   const url = `${BACKEND_URL}/${path}${searchParams ? `?${searchParams}` : ''}`;
 
@@ -30,9 +31,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { proxy: string[] } }
+  { params }: { params: Promise<{ proxy: string[] }> }
 ) {
-  const path = params.proxy.join('/');
+  const { proxy } = await params;
+  const path = proxy.join('/');
   const url = `${BACKEND_URL}/${path}`;
   const body = await request.json();
 
@@ -57,9 +59,10 @@ export async function POST(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { proxy: string[] } }
+  { params }: { params: Promise<{ proxy: string[] }> }
 ) {
-  const path = params.proxy.join('/');
+  const { proxy } = await params;
+  const path = proxy.join('/');
   const url = `${BACKEND_URL}/${path}`;
   const body = await request.json();
 
@@ -84,9 +87,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { proxy: string[] } }
+  { params }: { params: Promise<{ proxy: string[] }> }
 ) {
-  const path = params.proxy.join('/');
+  const { proxy } = await params;
+  const path = proxy.join('/');
   const url = `${BACKEND_URL}/${path}`;
 
   try {
