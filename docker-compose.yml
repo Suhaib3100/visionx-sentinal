@@ -62,8 +62,8 @@ services:
     container_name: visionx-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@visionx.local
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: suhaib@percify.io
+      PGADMIN_DEFAULT_PASSWORD: Zaka310@
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
       - '5050:80'

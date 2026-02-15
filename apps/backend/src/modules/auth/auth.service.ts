@@ -18,9 +18,9 @@ export class AuthService {
   private users: User[] = [
     {
       id: '1',
-      email: 'admin@visionx.com',
-      name: 'Admin User',
-      password: '$2b$10$YourHashedPasswordHere', // Replace with actual hash
+      email: 'suhaib@percify.io',
+      name: 'Suhaib',
+      password: '$2b$10$uoAokAaKUh3v0aif9.WP8.dVAhPQr7gMOAYC7iUieA0STihec9q6y',
       role: UserRole.ADMIN,
     },
   ];
@@ -106,7 +106,7 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload);
 
     return {
-      accessToken,
+      access_token: accessToken,
       user: {
         id: user.id,
         email: user.email,

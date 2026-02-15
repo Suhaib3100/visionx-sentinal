@@ -34,6 +34,7 @@ import { LeaderboardModule } from './modules/leaderboard/leaderboard.module';
         ],
         synchronize: configService.get<boolean>('database.synchronize'),
         logging: configService.get<boolean>('database.logging'),
+        ssl: configService.get<any>('database.ssl') || false,
       }),
     }),
     ScheduleModule.forRoot(),

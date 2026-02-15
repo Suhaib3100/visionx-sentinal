@@ -5,27 +5,56 @@ import { SnapshotEngine } from './snapshot/snapshot-engine';
 import { WorkspaceScanner } from './workspace/workspace-scanner';
 import { APIClient } from './api/api-client';
 import { StatusBarManager } from './ui/statusbar-manager';
+import { ProjectViewProvider, SnapshotsViewProvider } from './ui/sidebar-provider';
 
 let snapshotEngine: SnapshotEngine | undefined;
 let statusBarManager: StatusBarManager | undefined;
 let autoEvaluateTimer: NodeJS.Timeout | undefined;
+let projectViewProvider: ProjectViewProvider | undefined;
+let snapshotsViewProvider: SnapshotsViewProvider | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('VisionX Eval extension activated');
+  try {
+    console.log('VisionX Eval: Starting activation...');
 
-  const authManager = new AuthManager(context);
-  const apiClient = new APIClient(authManager);
-  const workspaceScanner = new WorkspaceScanner();
-  
-  statusBarManager = new StatusBarManager();
-  snapshotEngine = new SnapshotEngine(authManager, apiClient, workspaceScanner);
+    const authManager = new AuthManager(context);
+    const apiClient = new APIClient(authManager);
+    const workspaceScanner = new WorkspaceScanner();
+    
+    console.log('VisionX Eval: Managers created');
+    
+    statusBarManager = new StatusBarManager();
+    snapshotEngine = new SnapshotEngine(authManager, apiClient, workspaceScanner);
 
-  // Check if already authenticated
-  const isAuthenticated = await authManager.isAuthenticated();
-  statusBarManager.updateStatus(isAuthenticated ? 'authenticated' : 'disconnected');
+    console.log('VisionX Eval: StatusBar and SnapshotEngine initialized');
 
-  // Register commands
-  context.subscriptions.push(
+    // Register sidebar views FIRST
+    try {
+      projectViewProvider = new ProjectViewProvider(authManager, apiClient);
+      snapshotsViewProvider = new SnapshotsViewProvider(authManager, apiClient);
+
+      vscode.window.registerTreeDataProvider('visionx.projectView', projectViewProvider);
+      vscode.window.registerTreeDataProvider('visionx.snapshotsView', snapshotsViewProvider);
+
+      console.log('VisionX: Tree data providers registered successfully');
+    } catch (viewError) {
+      console.error('VisionX: Failed to register tree data providers:', viewError);
+    }
+
+    // Check if already authenticated
+    const isAuthenticated = await authManager.isAuthenticated();
+    statusBarManager.updateStatus(isAuthenticated ? 'authenticated' : 'disconnected');
+
+    console.log('VisionX Eval: Auth status checked:', isAuthenticated);
+    
+    // Register refresh command BEFORE other commands
+    vscode.commands.registerCommand('visionx.refreshView', () => {
+      console.log('VisionX: Refresh command called');
+      projectViewProvider?.refresh();
+      snapshotsViewProvider?.refresh();
+    });
+    
+    // Register authenticate command
     vscode.commands.registerCommand('visionx.authenticate', async () => {
       try {
         const token = await vscode.window.showInputBox({
@@ -41,6 +70,8 @@ export async function activate(context: vscode.ExtensionContext) {
         const success = await authManager.authenticate(token);
         if (success) {
           statusBarManager?.updateStatus('authenticated');
+          projectViewProvider?.refresh();
+          snapshotsViewProvider?.refresh();
           vscode.window.showInformationMessage('Successfully authenticated with VisionX!');
           
           // Start auto-evaluation if enabled
@@ -54,10 +85,8 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (error) {
         vscode.window.showErrorMessage(`Authentication error: ${error}`);
       }
-    })
-  );
+    });
 
-  context.subscriptions.push(
     vscode.commands.registerCommand('visionx.evaluateNow', async () => {
       try {
         if (!await authManager.isAuthenticated()) {
@@ -85,10 +114,8 @@ export async function activate(context: vscode.ExtensionContext) {
         statusBarManager?.updateStatus('error');
         vscode.window.showErrorMessage(`Evaluation error: ${error}`);
       }
-    })
-  );
+    });
 
-  context.subscriptions.push(
     vscode.commands.registerCommand('visionx.finalSubmission', async () => {
       try {
         if (!await authManager.isAuthenticated()) {
@@ -124,10 +151,8 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (error) {
         vscode.window.showErrorMessage(`Submission error: ${error}`);
       }
-    })
-  );
+    });
 
-  context.subscriptions.push(
     vscode.commands.registerCommand('visionx.viewStats', async () => {
       try {
         if (!await authManager.isAuthenticated()) {
@@ -147,21 +172,26 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to load stats: ${error}`);
       }
-    })
-  );
+    });
 
-  context.subscriptions.push(
     vscode.commands.registerCommand('visionx.disconnect', async () => {
       stopAutoEvaluation();
       await authManager.logout();
       statusBarManager?.updateStatus('disconnected');
+      projectViewProvider?.refresh();
+      snapshotsViewProvider?.refresh();
       vscode.window.showInformationMessage('Disconnected from VisionX');
-    })
-  );
+    });
 
-  // Start auto-evaluation if authenticated
-  if (isAuthenticated) {
-    startAutoEvaluation();
+      // Start auto-evaluation if authenticated
+    if (isAuthenticated) {
+      startAutoEvaluation();
+    }
+  
+    console.log('VisionX Eval extension activation complete');
+  } catch (error) {
+    console.error('VisionX Eval extension failed to activate:', error);
+    vscode.window.showErrorMessage(`VisionX Eval failed to activate: ${error}`);
   }
 }
 

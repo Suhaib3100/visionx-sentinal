@@ -42,7 +42,7 @@ export class SnapshotsController {
   @ApiOperation({ summary: 'Upload snapshot file from VS Code extension' })
   async uploadSnapshot(
     @Param('projectId') projectId: string,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: any,
     @Body('metadata') metadata: string,
   ): Promise<{ success: boolean; snapshotId: string }> {
     const parsedMetadata = JSON.parse(metadata);

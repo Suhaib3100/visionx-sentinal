@@ -34,8 +34,8 @@ export class RegisterDto {
 }
 
 export class AuthResponseDto {
-  accessToken: string;
-  refreshToken?: string;
+  access_token: string;
+  refresh_token?: string;
   user: {
     id: string;
     email: string;

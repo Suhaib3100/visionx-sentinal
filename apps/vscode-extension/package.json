@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "publisher": "visionx",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.109.0"
   },
   "categories": [
     "Other"
@@ -15,28 +15,73 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "visionx-sidebar",
+          "title": "VisionX Eval",
+          "icon": "$(layers)"
+        }
+      ]
+    },
+    "views": {
+      "visionx-sidebar": [
+        {
+          "id": "visionx.projectView",
+          "name": "Project Status"
+        },
+        {
+          "id": "visionx.snapshotsView",
+          "name": "Recent Snapshots"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "visionx.authenticate",
-        "title": "VisionX: Authenticate Team"
+        "title": "Authenticate Team",
+        "icon": "$(key)"
       },
       {
         "command": "visionx.evaluateNow",
-        "title": "VisionX: Evaluate Now"
+        "title": "Evaluate Now",
+        "icon": "$(rocket)"
       },
       {
         "command": "visionx.finalSubmission",
-        "title": "VisionX: Final Submission"
+        "title": "Final Submission",
+        "icon": "$(check)"
       },
       {
         "command": "visionx.viewStats",
-        "title": "VisionX: View Project Stats"
+        "title": "View Stats",
+        "icon": "$(graph)"
       },
       {
         "command": "visionx.disconnect",
-        "title": "VisionX: Disconnect"
+        "title": "Disconnect",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "visionx.refreshView",
+        "title": "Refresh",
+        "icon": "$(refresh)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "visionx.refreshView",
+          "when": "view == visionx.projectView",
+          "group": "navigation"
+        },
+        {
+          "command": "visionx.authenticate",
+          "when": "view == visionx.projectView",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "VisionX Eval",
       "properties": {
@@ -54,13 +99,18 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run package",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --production",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "package": "vsce package"
+    "vsce-package": "vsce package --no-yarn"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/visionx/visionx-eval.git"
   },
   "devDependencies": {
     "@types/node": "^18.19.130",
@@ -69,6 +119,7 @@
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "@vscode/test-electron": "^2.3.0",
+    "esbuild": "^0.27.3",
     "eslint": "^8.57.1",
     "typescript": "^5.9.3",
     "vsce": "^2.15.0"
