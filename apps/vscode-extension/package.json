@@ -1,0 +1,80 @@
+{
+  "name": "visionx-eval",
+  "displayName": "VisionX Eval",
+  "description": "Automated hackathon project evaluation extension",
+  "version": "0.0.1",
+  "publisher": "visionx",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "visionx.authenticate",
+        "title": "VisionX: Authenticate Team"
+      },
+      {
+        "command": "visionx.evaluateNow",
+        "title": "VisionX: Evaluate Now"
+      },
+      {
+        "command": "visionx.finalSubmission",
+        "title": "VisionX: Final Submission"
+      },
+      {
+        "command": "visionx.viewStats",
+        "title": "VisionX: View Project Stats"
+      },
+      {
+        "command": "visionx.disconnect",
+        "title": "VisionX: Disconnect"
+      }
+    ],
+    "configuration": {
+      "title": "VisionX Eval",
+      "properties": {
+        "visionx.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:3000/api",
+          "description": "VisionX API URL"
+        },
+        "visionx.autoEvaluate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic evaluation every 45 minutes"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vscode/test-electron": "^2.3.0",
+    "eslint": "^8.45.0",
+    "typescript": "^5.1.0",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "ignore": "^5.2.4",
+    "tar": "^6.1.15"
+  }
+}
