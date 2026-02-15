@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { SnapshotsService } from './snapshots.service';
 import { CreateSnapshotDto } from './dto/create-snapshot.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Snapshot } from './entities/snapshot.entity';
 
+@ApiTags('snapshots')
 @Controller('snapshots')
 export class SnapshotsController {
   constructor(private readonly snapshotsService: SnapshotsService) {}
