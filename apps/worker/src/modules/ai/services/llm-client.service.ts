@@ -24,6 +24,7 @@ export class LLMClientService {
   private maxTokens: number;
   private temperature: number;
   private maxRetries: number = 3;
+  private modelProvider: 'amazon' | 'anthropic' | 'other';
 
   constructor(private readonly configService: ConfigService) {
     const region = this.configService.get<string>('aws.region') || 'us-east-1';
@@ -31,9 +32,18 @@ export class LLMClientService {
     const secretAccessKey = this.configService.get<string>('aws.secretAccessKey');
     
     this.modelId = this.configService.get<string>('aws.bedrock.modelId') || 
-      'anthropic.claude-3-haiku-20240307-v1:0';
+      'amazon.nova-micro-v1:0';
     this.maxTokens = this.configService.get<number>('aws.bedrock.maxTokens') || 4096;
-    this.temperature = this.configService.get<number>('aws.bedrock.temperature') || 0.3;
+    this.temperature = this.configService.get<number>('aws.bedrock.temperature') || 0.7;
+
+    // Detect model provider for API format selection
+    if (this.modelId.includes('amazon.nova') || this.modelId.includes('amazon.titan')) {
+      this.modelProvider = 'amazon';
+    } else if (this.modelId.includes('anthropic') || this.modelId.includes('claude')) {
+      this.modelProvider = 'anthropic';
+    } else {
+      this.modelProvider = 'other';
+    }
 
     // Initialize Bedrock client with optional credentials
     const clientConfig: any = { region };
@@ -49,9 +59,15 @@ export class LLMClientService {
 
     this.bedrockClient = new BedrockRuntimeClient(clientConfig);
 
+    const isInferenceProfile = this.modelId.includes('inference-profile');
+    const modelType = isInferenceProfile ? 'inference profile' : 'model';
+
     this.logger.log(
-      `Bedrock LLM initialized with model: ${this.modelId} in region: ${region}`
+      `Bedrock LLM initialized - Provider: ${this.modelProvider}, ${modelType}: ${this.modelId}, Region: ${region}`
     );
+    if (isInferenceProfile) {
+      this.logger.log(`Using cross-region routing for maximum throughput and cost savings`);
+    }
   }
 
   async evaluateCode(prompt: string): Promise<LLMResponse> {
@@ -63,23 +79,41 @@ export class LLMClientService {
           `Calling Bedrock API (attempt ${attempt}/${this.maxRetries})...`
         );
 
-        // Prepare the request body for Claude 3
-        const requestBody = {
-          anthropic_version: 'bedrock-2023-05-31',
-          max_tokens: this.maxTokens,
-          temperature: this.temperature,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `You are an expert code reviewer evaluating hackathon projects. Provide structured JSON responses with scores and feedback.\n\n${prompt}\n\nRespond with a valid JSON object containing: innovation_score, architecture_score, scalability_score, alignment_score, readability_score, documentation_score (all 0-100), feedback (string), and risk_flags (array of strings).`,
-                },
-              ],
+        const fullPrompt = `You are an expert code reviewer evaluating hackathon projects. Provide structured JSON responses with scores and feedback.\n\n${prompt}\n\nRespond with a valid JSON object containing: innovation_score, architecture_score, scalability_score, alignment_score, readability_score, documentation_score (all 0-100), feedback (string), and risk_flags (array of strings).`;
+
+        // Prepare request body based on model provider
+        let requestBody: any;
+        
+        if (this.modelProvider === 'amazon') {
+          // Amazon Nova format
+          requestBody = {
+            messages: [
+              {
+                role: 'user',
+                content: [{ text: fullPrompt }],
+              },
+            ],
+            inferenceConfig: {
+              maxTokens: this.maxTokens,
+              temperature: this.temperature,
             },
-          ],
-        };
+          };
+        } else if (this.modelProvider === 'anthropic') {
+          // Claude format
+          requestBody = {
+            anthropic_version: 'bedrock-2023-05-31',
+            max_tokens: this.maxTokens,
+            temperature: this.temperature,
+            messages: [
+              {
+                role: 'user',
+                content: fullPrompt,
+              },
+            ],
+          };
+        } else {
+          throw new Error(`Unsupported model provider: ${this.modelProvider}`);
+        }
 
         const command = new InvokeModelCommand({
           modelId: this.modelId,
@@ -93,19 +127,36 @@ export class LLMClientService {
           new TextDecoder().decode(response.body)
         );
 
-        // Claude 3 response structure
-        if (!responseBody.content || !responseBody.content[0]) {
-          throw new Error('Empty response from Bedrock');
+        // Extract content based on provider
+        let contentText: string = '';
+        
+        if (this.modelProvider === 'amazon') {
+          // Amazon Nova response format
+          if (!responseBody.output?.message?.content?.[0]?.text) {
+            throw new Error('Empty response from Bedrock (Amazon Nova)');
+          }
+          contentText = responseBody.output.message.content[0].text;
+          
+          // Log token usage for Amazon Nova
+          const inputTokens = responseBody.usage?.inputTokens || 0;
+          const outputTokens = responseBody.usage?.outputTokens || 0;
+          this.logger.log(
+            `Bedrock API usage: ${inputTokens} input + ${outputTokens} output tokens`
+          );
+        } else if (this.modelProvider === 'anthropic') {
+          // Claude response format
+          if (!responseBody.content || !responseBody.content[0]) {
+            throw new Error('Empty response from Bedrock (Claude)');
+          }
+          contentText = responseBody.content[0].text;
+          
+          // Log token usage for Claude
+          this.logger.log(
+            `Bedrock API usage: ${responseBody.usage?.input_tokens} input + ${responseBody.usage?.output_tokens} output tokens. Stop reason: ${responseBody.stop_reason}`
+          );
         }
 
-        const contentText = responseBody.content[0].text;
-
-        // Log token usage for cost tracking
-        this.logger.log(
-          `Bedrock API usage: ${responseBody.usage?.input_tokens} input + ${responseBody.usage?.output_tokens} output tokens. Stop reason: ${responseBody.stop_reason}`
-        );
-
-        // Extract JSON from the response (Claude might wrap it in markdown)
+        // Extract JSON from the response (models might wrap it in markdown)
         const jsonMatch = contentText.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
           throw new Error('No JSON found in Bedrock response');
